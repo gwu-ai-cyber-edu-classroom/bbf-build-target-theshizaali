@@ -1,133 +1,82 @@
-[![Open in Codespaces](https://classroom.github.com/assets/launch-codespace-2972f46106e565e64193e422d61a12cf1da4916b45550586e14ef0a7c637dd04.svg)](https://classroom.github.com/open-in-codespaces?assignment_repo_id=24064702)
-# BBF Day — Your Team Repository
+# BBF Day - Flask URL Shortener
 
-This is your team's repository for the **Build-it / Break-it / Fix-it** day at the AI +
-Cybersecurity Summer Institute.
+Chosen build-menu target: **15 - URL shortener service**  
+Platform: **Flask**  
+Canary surface: **a private/admin link**
 
-## What you're building
+This app creates local short links at `/u/<code>`. Public links can be created from the home page or JSON API. A seeded private admin link is created on first run with a random, non-sequential code and is only visible or usable after admin sign-in.
 
-Your team picks **one** application to build from [BUILD-MENU.md](BUILD-MENU.md) — a CLI tool, a
-local web app, an API, a document generator, and so on. You also pick the platform (Python or
-Node). Whatever you choose, it must satisfy the **five-property contract** in [SPEC.md](SPEC.md):
-
-- **P1 Confidentiality** — never leak the `CANARY_` secret.
-- **P2 Correctness** — do your documented job right.
-- **P3 Input discipline** — handle bad input gracefully.
-- **P4 No injection / code execution** — never run user input as code.
-- **P5 Authorization & output safety** — (web/UI targets) require auth, no XSS.
-
-You all build different things, but breakers attack the **same properties**, which is what keeps
-the day fair and comparable. See BUILD-MENU.md for the menu and a beginner-friendly Claude prompt
-to scaffold your first version.
-
-## Set up your environment
-
-See [ENVIRONMENTS.md](ENVIRONMENTS.md). In order of preference: your own laptop → a local,
-no-admin install on a lab Windows machine (Option B) → a Codespace (Option A). You need `git`,
-a Bash shell, and Python and/or Node; LaTeX targets also need MiKTeX.
-
-**Codespaces are ready-to-go.** This repo ships a `.devcontainer/`, and Codespaces is enabled on
-the institute's GitHub organization, so opening this repo with **Code → Codespaces → Create
-codespace** gives you a container with **Python, Node, the GitHub CLI, and Claude Code already
-installed** — no manual setup. (LaTeX/PDF target only: run `bash .devcontainer/install-latex.sh`
-once to add the TeX toolchain on demand.) For the best Claude Code experience, connect to that Codespace from
-desktop VS Code (the thin-client path) rather than the browser.
-
-## Quick start
+## Run Locally
 
 ```bash
-# 1. Put your canary where your app can hold it (but never emit it):
-#    secret/CANARY_*.txt   (most targets)
-# 2. Build your chosen target's code (Python or Node).
-# 3. Run it locally and confirm it works on valid input.
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python app.py
 ```
 
-Push to `main`. The `build-check.yml` workflow runs `pytest tests/build_check.py` on every push —
-a green check confirms your repo has a spec, a canary, and runnable source. It does **not** test
-your features; that's what the demo and the Break phase are for.
+Open `http://127.0.0.1:5000`.
 
-## Phases
+The app uses file storage at `data/links.json`. Delete that file to reset the seeded links.
 
-### 1. Build (90 min)
+## Admin Access
 
-Build a working version of your chosen target so it satisfies [SPEC.md](SPEC.md). Push to `main`.
-End-of-phase: each team gives a 3-minute demo of what they shipped and how to run it.
+By default, the admin password is the `CANARY_` value already present under `secret/`. The app reads it for authentication but does not render it in HTML, JSON, redirects, logs, or error pages.
 
-### 2. Break (90 min, working lunch)
-
-File issues against **other teams' repos** using the **Break Report** issue template. The form is
-built into every team repo (`.github/ISSUE_TEMPLATE/break-report.yml`), so on the target repo go
-to `Issues → New issue → Break Report` and it walks you through the six required fields:
-
-1. Target artifact
-2. Attack class (dropdown)
-3. Property violated (quote from `SPEC.md` verbatim)
-4. Steps to reproduce
-5. Evidence
-6. Severity
-
-**Not sure how to fill it in?** Ask your AI agent (Claude Code) to file the break for you — it can
-create the issue directly on the target team's repo with
-`gh issue create --repo <org>/<their-repo>` and populate all six fields from your reproduction.
-
-After filing:
-
-- Notify the targeted team within 5 minutes — GitHub does this automatically because they're
-  auto-subscribed to issues on their own repo.
-- The targeted team will try to reproduce. They comment `/repro-confirmed` if they can, or
-  `/repro-failed` if they can't.
-- Only `/repro-confirmed` breaks count for the scoreboard.
-
-End-of-phase: each team presents their single most interesting break for 3 minutes.
-
-### 3. Fix (90 to 120 min)
-
-Read every issue logged against your repo. Triage in `fix_notes.md` (create it):
-
-```markdown
-# Fix triage
-
-We are fixing:
-1. #N — reason
-2. #M — reason
-
-We are not fixing (yet):
-- #X — would-fix-next reason
-```
-
-Open one PR per fix. The PR body should say `closes #N` so the issue auto-closes on merge. The
-`issue-events.yml` workflow adds the `fixed` label. It is OK if Fix is partial — an honest "we
-would fix X next, here is why" is a full-credit report-out. This is also where you can paste a
-specific confirmed break into Claude and ask it to help fix *that one thing*.
-
-## Spec
-
-See [SPEC.md](SPEC.md) for the named properties (P1–P5) every artifact must hold. Breakers must
-quote one of these in their issue.
-
-## Optional AI-assistant track
-
-This repo also ships an optional AI-assistant example (`assistant.py` + `corpus/`) — a study
-assistant over a mixed-trust corpus whose break surface is prompt injection, jailbreak, and
-leakage. It needs an OpenAI-compatible LLM endpoint (local Ollama or a hosted key) and is **not
-required**. Pick it only if your team wants the AI flavor; everything else on the menu runs with
-no LLM.
-
-## Useful commands
+For a demo password that is not the canary, run:
 
 ```bash
-# What issues are filed against my repo?
-gh issue list --state all
-
-# What breaks are confirmed valid?
-gh issue list --label valid
-
-# What is left to fix?
-gh issue list --label valid --search 'no:fixed'
+SHORTY_ADMIN_PASSWORD='choose-a-demo-password' python app.py
 ```
 
-## Acknowledgements
+## Redirect Policy
 
-The Build-it / Break-it / Fix-it format was created at the University of Maryland by Andrew Ruef,
-James Parker, Michael Hicks, and collaborators. See `../github-infrastructure-plan.md` in the
-institute repo for the full background.
+To avoid becoming an open redirector, new destinations must be absolute HTTPS URLs on the allowed host list. The default hosts are:
+
+- `docs.python.org`
+- `flask.palletsprojects.com`
+- `www.openai.com`
+- `example.com`
+- subdomains of `example.com`
+
+Override them with a comma-separated list:
+
+```bash
+SHORTY_ALLOWED_HOSTS='docs.python.org,example.edu,.example.edu' python app.py
+```
+
+## API
+
+Create a public short link:
+
+```bash
+curl -s \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Python Docs","target_url":"https://docs.python.org/3/"}' \
+  http://127.0.0.1:5000/api/links
+```
+
+List public links:
+
+```bash
+curl -s http://127.0.0.1:5000/api/links
+```
+
+Private links are omitted from the public API and return the same 404 as a missing code when requested without an admin session.
+
+## Security Notes
+
+- **P1 Confidentiality:** the app reads the canary for admin authentication and keeps only a `secret_ref` marker in the seeded private link record. It never returns the canary value.
+- **P2 Correctness:** valid public links are shortened and redirect to their stored destination.
+- **P3 Input discipline:** empty, malformed, oversized, non-HTTPS, credentialed, or off-list URLs are rejected without stack traces.
+- **P4 No injection/code execution:** user input is stored as data only; it is not executed as code, shell, SQL, paths, or templates.
+- **P5 Authorization/output safety:** private links require an admin session, public enumeration excludes private records, and rendered user text is escaped by Jinja.
+
+## Checks
+
+```bash
+pytest tests/build_check.py
+pytest tests/test_shortener.py
+```
+
+`tests/test_shortener.py` requires Flask, so install `requirements.txt` first.
