@@ -1,0 +1,4 @@
+# Disable the "open a blank issue" option. With blank issues off and exactly one
+# issue form (break-report.yml), clicking "New issue" opens the Break Report form
+# directly instead of showing a chooser.
+blank_issues_enabled: false

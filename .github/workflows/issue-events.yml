@@ -65,6 +65,15 @@ jobs:
           ADD: ${{ steps.cmd.outputs.add }}
           REMOVE: ${{ steps.cmd.outputs.remove }}
         run: |
+          set -euo pipefail
+          # Auto-create the label so a missing label can never silently swallow
+          # the /repro-confirmed (this was a real footgun in manual setups).
+          case "$ADD" in
+            valid)   COLOR=0E8A16; DESC="Break confirmed reproducible" ;;
+            invalid) COLOR=B60205; DESC="Break failed repro or ruled out" ;;
+            *)       COLOR=ededed; DESC="" ;;
+          esac
+          gh label create "$ADD" -R "$REPO" -c "$COLOR" -d "$DESC" --force >/dev/null 2>&1 || true
           gh issue edit "$ISSUE" -R "$REPO" --add-label "$ADD" || true
           if [[ -n "$REMOVE" ]]; then
             gh issue edit "$ISSUE" -R "$REPO" --remove-label "$REMOVE" || true
@@ -79,4 +88,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
-        run: gh issue edit "$ISSUE" -R "$REPO" --add-label "fixed" || true
+        run: |
+          gh label create fixed -R "$REPO" -c 1D76DB -d "Break addressed by merged PR" --force >/dev/null 2>&1 || true
+          gh issue edit "$ISSUE" -R "$REPO" --add-label "fixed" || true
