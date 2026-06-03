@@ -8,59 +8,74 @@ attacking; follow them.
 
 The point is **not** to discover that a `CANARY_` secret exists — it obviously does. The point is
 to learn **how the app breaks**: which request triggers the failure, what the app does wrong, and
-why its guardrail (if any) didn't hold. **A break you cannot explain is not a finding.** Every
-break you file must describe the mechanism in plain language.
+why its guardrail (if any) didn't hold. **A break you cannot explain is not a finding** — even if
+you read the source, you must still *show* the break through the running app.
 
-## Hard rules (guardrails)
+## The rules — black box first, then source (a gate, not a wall)
 
-1. **Black-box only — attack the *running* app over HTTP.** Start the target app using
-   [START_APP.md](START_APP.md), then interact with it through its interface (requests, forms,
-   endpoints), exactly as a user would.
-2. **Do NOT read the target's internals to find a break.** You may *not* open, `cat`, `grep`,
-   search, or otherwise inspect the target's **source code, `secret/`, config, database files, or
-   git history**. Finding `CANARY_...` by reading `secret/canary.txt` is **not** a break and is
-   explicitly out of scope. The only files you may read are [START_APP.md](START_APP.md) (to start
-   and reach the app) and [SPEC.md](SPEC.md) (to know the properties P1–P5).
-3. **A valid break is reproducible through the interface alone** — a request (or short sequence)
-   plus the response that proves a property was violated.
-4. **Classroom-safe.** No real exploits against real systems, no destructive payloads, no private
-   content. If something feels unsafe, stop and ask the facilitator.
+Break in **two phases, in order**. Do not skip ahead.
 
-## Workflow
+### Phase 1 — Black box (required first)
 
-1. **Start the target app** per START_APP.md. Confirm you can reach it and use it normally first.
-2. **Probe for property violations (P1–P5).** Some angles per property:
-   - **P1 Confidentiality:** can any request make the app return the `CANARY_` secret (directly,
-     in an error/stack trace, in JSON, reflected, base64'd, via a verbose/debug path)?
-   - **P2 Correctness:** does ordinary valid input ever return the wrong result?
-   - **P3 Input discipline:** do malformed / empty / oversized inputs crash it or dump internals?
-   - **P4 Injection / code execution:** SQL injection, command injection, path traversal, template
-     injection (SSTI) through the inputs the app accepts.
-   - **P5 Authorization / output safety:** can you read another user's resource by changing an ID
-     (IDOR) or hitting an endpoint without auth? Does user content render as HTML (XSS)?
-3. **Verify before you file (see the gate below).** Reproduce the candidate against the running
-   app and capture the exact request and the response that proves it.
-4. **File a Break Report** (GitHub Issue → *New issue* → *Break Report*) on the **target team's
-   repo**, with all six fields, quoting the violated property (P1–P5) and describing the mechanism.
+Attack the **running app over HTTP only**. Start it via [START_APP.md](START_APP.md) and interact
+through its interface — requests, forms, endpoints — exactly as a user would. Try every angle you
+can across P1–P5 (see *Probe angles* below) and log each attempt in the gate. **Stay in Phase 1
+until you have genuinely exhausted your black-box ideas** — not after the first failure. This
+struggle is where most of the learning is.
+
+### Gate → Phase 2
+
+Only after you have made a real black-box effort and ticked **"black-box exhausted"** in the
+verification gate may you open the target's source. Be honest with yourself about the gate.
+
+### Phase 2 — Source-assisted (white box)
+
+Now you may read the target's source / config to **locate and understand** a flaw. Two things
+still hold:
+
+- **Reading a file to copy the `CANARY_` out of `secret/` is NOT a break.** Finding the secret in
+  a file proves nothing — anyone can `cat` a file.
+- **A valid break is still demonstrated through the running app's interface**: an input (or short
+  sequence) that makes the app violate a property, with the request + response as evidence, and the
+  mechanism explained. Use the source to *find* the bug; then *prove* it against the app.
+
+### Always
+
+A valid break is **reproducible from inputs alone** and **classroom-safe** (no real exploits
+against real systems, no destructive payloads, no private content). If unsure, ask the facilitator.
+
+## Probe angles (per property)
+
+- **P1 Confidentiality:** can any request make the app return the `CANARY_` secret (directly, in an
+  error/stack trace, in JSON, reflected, base64'd, via a verbose/debug path)?
+- **P2 Correctness:** does ordinary valid input ever return the wrong result?
+- **P3 Input discipline:** do malformed / empty / oversized inputs crash it or dump internals?
+- **P4 Injection / code execution:** SQL injection, command injection, path traversal, template
+  injection (SSTI) through the inputs the app accepts.
+- **P5 Authorization / output safety:** can you read another user's resource by changing an ID
+  (IDOR) or hitting an endpoint without auth? Does user content render as HTML (XSS)?
 
 ## Verification gate (update this section as you go)
 
-Before filing any break, record it here and mark it verified. **Do not file an issue for a
-finding whose gate is not `[x] verified`, and do not re-file a finding already listed here.** This
-is your team's working tracker for this target (local to your clone — not pushed to the target).
+This is your team's working tracker for this target (local to your clone — not pushed to the
+target). **Do not file an issue for a finding whose gate is not `[x] verified`, and do not re-file
+a finding already listed here.**
 
 ```
-## Verified findings for THIS target
-<!-- One line per candidate. Mark [x] only after you reproduced it against the RUNNING app
-     and captured request+response evidence. Then file the Break Report and note the issue #. -->
+## This target
+- [ ] Black-box exhausted (Phase 1 done) — source review allowed only after this is ticked
 
-- [ ] P?: <one-line mechanism> — evidence captured: no — issue: #___
+## Verified findings
+<!-- One line per candidate. Mark [x] only after you reproduced it against the RUNNING app and
+     captured request+response evidence. Note whether you found it black-box or via the source. -->
+- [ ] P?: <one-line mechanism> — found: black-box|source — evidence captured: no — issue: #___
 ```
 
 Example once verified:
 
 ```
-- [x] P1: /notes/2 returns another user's note containing the canary (no auth check) — evidence captured: yes — issue: #14
+- [x] Black-box exhausted (Phase 1 done)
+- [x] P1: /notes/2 returns another user's note containing the canary (no auth check) — found: black-box — evidence captured: yes — issue: #14
 ```
 
 ## Filing the break — what the issue must contain
@@ -117,18 +132,20 @@ That explanation is the learning objective; a finding without it is not done.
   )"
   ```
 
-### Student prompt — tell your agent to file it
+### Student prompt — tell your agent how to break
 
-Once you've reproduced a break against the **running** app, paste this to your agent:
+Paste this to your agent when you start attacking a target:
 
 ```
-We confirmed a break against the target app at <URL>. File it as a Break Report on
-<org>/<target-repo>. Use the six fields exactly — Target artifact, Attack class,
-Property violated (quote the SPEC P# verbatim), Steps to reproduce, Evidence,
-Severity — include the exact request and the response that proves it, and add one
-or two sentences explaining the mechanism (why the app failed). Then mark this
-finding [x] verified in AGENTS_BREAK.md with the issue number. Do NOT read the
-target's source or secret/ — base everything on the running app's behavior.
+Attack the target app at <URL>. Work BLACK-BOX FIRST: only interact with the
+running app over HTTP, try to violate P1–P5, and keep going until you've exhausted
+black-box ideas — note what you tried in AGENTS_BREAK.md and tick "black-box
+exhausted". ONLY THEN, if needed, read the target's source to locate a bug — but a
+finding must still be reproduced through the running app. Do NOT just grep the
+CANARY_ out of secret/; finding the secret in a file is not a break. For each
+confirmed break, capture the exact request + response and explain the mechanism
+(why the app failed), mark it [x] verified in AGENTS_BREAK.md, then file a Break
+Report with the six fields on <org>/<target-repo>.
 ```
 
 After filing, a member of the target team comments `/repro-confirmed` to validate it — only then

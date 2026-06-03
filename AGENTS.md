@@ -45,13 +45,15 @@ Goal: ship a small **working web app** from [BUILD-MENU.md](BUILD-MENU.md) that 
 
 **Defer to [AGENTS_BREAK.md](AGENTS_BREAK.md). Follow it exactly.** In short:
 
-- Attack the **running app over HTTP** (start it via the target's `START_APP.md`).
-- **Do NOT read the target's source, `secret/`, config, database, or git history** to find a
-  break. Finding the canary by reading files is out of scope. The learning objective is to
-  understand **how** the app breaks through its interface.
-- **Verify** each candidate against the running app, record it in the AGENTS_BREAK.md verification
-  gate, and only then **file a Break Report** (GitHub Issue) on the target repo with all six
-  fields, quoting the violated property.
+- **Black box first.** Attack the **running app over HTTP** (start it via the target's
+  `START_APP.md`) and keep going until you've exhausted black-box ideas — tick "black-box
+  exhausted" in the AGENTS_BREAK.md gate before doing anything else.
+- **Then source-assisted.** After the gate, you may read the target's source to *locate* a bug —
+  but copying the `CANARY_` out of `secret/` is **not** a break. A finding must still be
+  **reproduced through the running app** (request + response) with the mechanism explained.
+- **Verify** each candidate against the running app, record it in the AGENTS_BREAK.md gate, and
+  only then **file a Break Report** (GitHub Issue) on the target repo with all six fields, quoting
+  the violated property.
 
 ## 🛠️ FIX mode (`PHASE = fix`) — your team's app, after breaks land
 
