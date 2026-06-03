@@ -95,6 +95,24 @@ form enforces them):
 In the steps/evidence, **explain the mechanism in one or two sentences** — *why* the app failed.
 That explanation is the learning objective; a finding without it is not done.
 
+### Before you file: check for a duplicate
+
+Another team may have already filed the **same** break against this target. **Always check the
+target repo's existing issues first** and do not file a duplicate:
+
+```bash
+# Scan existing Break Reports on the target (open and closed):
+gh issue list --repo <org>/<target-repo> --state all --limit 200 \
+  --json number,title,state,labels --jq '.[] | "\(.number) [\(.state)] \(.title)"'
+```
+
+If an issue already reports the **same break** (same target + property + attack class), you **may
+still file it** — but **the first team to file earns full points**, and later duplicates **decay**
+(halved roughly every 5 minutes, toward zero). So a late duplicate is worth little or nothing.
+Usually the better move is to **comment on the existing issue** with any new evidence and spend
+your time finding a **different, new** break. (A genuinely distinct break — different property or
+endpoint — is not a duplicate; file it.)
+
 ### Two ways to file
 
 - **Web form (preferred):** on the target repo, **Issues → New issue** opens the Break Report form
@@ -143,9 +161,13 @@ black-box ideas — note what you tried in AGENTS_BREAK.md and tick "black-box
 exhausted". ONLY THEN, if needed, read the target's source to locate a bug — but a
 finding must still be reproduced through the running app. Do NOT just grep the
 CANARY_ out of secret/; finding the secret in a file is not a break. For each
-confirmed break, capture the exact request + response and explain the mechanism
-(why the app failed), mark it [x] verified in AGENTS_BREAK.md, then file a Break
-Report with the six fields on <org>/<target-repo>.
+confirmed break, capture the exact request + response, explain the mechanism (why
+the app failed), and note the discovery method (black-box or white-box). Before
+filing, list the target repo's existing issues (gh issue list); if the same break
+is already reported you MAY still file it, but it will score little (first finder
+wins; duplicates decay), so prefer commenting and finding a NEW break. Otherwise
+mark it [x] verified in AGENTS_BREAK.md and file a Break Report with all six fields
+on <org>/<target-repo>.
 ```
 
 After filing, a member of the target team comments `/repro-confirmed` to validate it — only then

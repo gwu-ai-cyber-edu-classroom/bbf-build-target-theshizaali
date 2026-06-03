@@ -51,9 +51,11 @@ Goal: ship a small **working web app** from [BUILD-MENU.md](BUILD-MENU.md) that 
 - **Then source-assisted.** After the gate, you may read the target's source to *locate* a bug —
   but copying the `CANARY_` out of `secret/` is **not** a break. A finding must still be
   **reproduced through the running app** (request + response) with the mechanism explained.
-- **Verify** each candidate against the running app, record it in the AGENTS_BREAK.md gate, and
-  only then **file a Break Report** (GitHub Issue) on the target repo with all six fields, quoting
-  the violated property.
+- **Verify** each candidate against the running app and record it in the AGENTS_BREAK.md gate.
+  Before filing, **check the target repo's existing issues** — you *may* still file a duplicate,
+  but the **first finder earns full points and later duplicates decay toward zero**, so prefer
+  commenting and finding a new break. Then **file a Break Report** (GitHub Issue) with all six
+  fields (including the black-box/white-box discovery method), quoting the violated property.
 
 ## 🛠️ FIX mode (`PHASE = fix`) — your team's app, after breaks land
 

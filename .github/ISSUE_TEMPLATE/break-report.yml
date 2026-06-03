@@ -43,6 +43,17 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: discovery
+    attributes:
+      label: Discovery method
+      description: How did you find this break? Per AGENTS_BREAK.md, work black-box first; only review source after you've exhausted black-box.
+      options:
+        - black-box (interface only)
+        - white-box (source-assisted)
+    validations:
+      required: true
+
   - type: input
     id: property_violated
     attributes:
