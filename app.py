@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{3,31}$")
 CANARY_RE = re.compile(r"CANARY_[^\s\"'<>]+")
 MAX_TITLE_LENGTH = 80
 MAX_URL_LENGTH = 2048
+STORE_LOCK = threading.RLock()
 DEFAULT_ALLOWED_HOSTS = {
     "docs.python.org",
     "flask.palletsprojects.com",
@@ -44,6 +46,10 @@ DEFAULT_ALLOWED_HOSTS = {
     "example.com",
     ".example.com",
 }
+
+
+class DuplicateCodeError(ValueError):
+    """Raised when a requested short code already exists."""
 
 
 INDEX_TEMPLATE = """
@@ -449,22 +455,19 @@ def create_app(storage_path: str | Path | None = None) -> Flask:
     def create_link():
         require_csrf()
         try:
-            link = make_link(
+            link = create_stored_link(
                 title=request.form.get("title", ""),
                 target_url=request.form.get("target_url", ""),
                 alias=request.form.get("alias", ""),
                 private=bool(request.form.get("private")) and is_admin(),
             )
+        except DuplicateCodeError:
+            flash("That short code is already in use.", "error")
+            return redirect(url_for("home"))
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for("home"))
 
-        links = load_links()
-        if link["code"] in links:
-            flash("That short code is already in use.", "error")
-            return redirect(url_for("home"))
-        links[link["code"]] = link
-        save_links(links)
         flash("Short link created.", "success")
         return redirect(url_for("home"))
 
@@ -473,21 +476,9 @@ def create_app(storage_path: str | Path | None = None) -> Flask:
         if not CODE_RE.fullmatch(code):
             abort(404)
 
-        links = load_links()
-        link = links.get(code)
-        if not link:
+        target_url = record_link_follow(code, allow_private=is_admin())
+        if target_url is None:
             abort(404)
-        if link.get("private") and not is_admin():
-            abort(404)
-
-        try:
-            target_url = normalize_target(str(link.get("target_url", "")))
-        except ValueError:
-            abort(404)
-
-        link["hits"] = int(link.get("hits", 0)) + 1
-        links[code] = link
-        save_links(links)
         return redirect(target_url, code=302)
 
     @app.get("/login")
@@ -535,20 +526,17 @@ def create_app(storage_path: str | Path | None = None) -> Flask:
         if private and not is_admin():
             return jsonify({"error": "Admin access required."}), 403
         try:
-            link = make_link(
+            link = create_stored_link(
                 title=str(payload.get("title", "")),
                 target_url=str(payload.get("target_url", "")),
                 alias=str(payload.get("alias", "")),
                 private=private,
             )
+        except DuplicateCodeError:
+            return jsonify({"error": "That short code is already in use."}), 409
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        links = load_links()
-        if link["code"] in links:
-            return jsonify({"error": "That short code is already in use."}), 409
-        links[link["code"]] = link
-        save_links(links)
         return jsonify(public_link_payload(link)), 201
 
     @app.get("/api/admin/links")
@@ -697,7 +685,55 @@ def normalize_target(raw_url: str) -> str:
     return urlunparse(("https", netloc, path, "", parsed.query, parsed.fragment))
 
 
-def make_link(title: str, target_url: str, alias: str = "", private: bool = False) -> dict[str, Any]:
+def create_stored_link(title: str, target_url: str, alias: str = "", private: bool = False) -> dict[str, Any]:
+    with STORE_LOCK:
+        links = load_links()
+        link = make_link(
+            title=title,
+            target_url=target_url,
+            alias=alias,
+            private=private,
+            existing_codes=set(links),
+        )
+        if link["code"] in links:
+            raise DuplicateCodeError("That short code is already in use.")
+        links[link["code"]] = link
+        save_links(links)
+        return link
+
+
+def record_link_follow(code: str, allow_private: bool = False) -> str | None:
+    with STORE_LOCK:
+        links = load_links()
+        link = links.get(code)
+        if not link:
+            return None
+        if link.get("private") and not allow_private:
+            return None
+
+        try:
+            target_url = normalize_target(str(link.get("target_url", "")))
+        except ValueError:
+            return None
+
+        updated = dict(link)
+        try:
+            current_hits = int(updated.get("hits", 0))
+        except (TypeError, ValueError):
+            current_hits = 0
+        updated["hits"] = current_hits + 1
+        links[code] = updated
+        save_links(links)
+        return target_url
+
+
+def make_link(
+    title: str,
+    target_url: str,
+    alias: str = "",
+    private: bool = False,
+    existing_codes: set[str] | None = None,
+) -> dict[str, Any]:
     clean_title = " ".join(title.split())
     if not clean_title:
         raise ValueError("Title is required.")
@@ -709,7 +745,7 @@ def make_link(title: str, target_url: str, alias: str = "", private: bool = Fals
         if not CODE_RE.fullmatch(code):
             raise ValueError("Short code must be 4-32 URL-safe characters.")
     else:
-        code = generate_code()
+        code = generate_code(existing_codes)
 
     return {
         "code": code,
@@ -735,48 +771,52 @@ def timestamp() -> str:
 
 
 def ensure_storage(path: Path) -> None:
-    if path.exists():
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    links: dict[str, dict[str, Any]] = {}
-    seed_links = [
-        ("Python Docs", "https://docs.python.org/3/"),
-        ("Flask Project", "https://flask.palletsprojects.com/"),
-    ]
-    for title, target in seed_links:
-        link = make_link(title=title, target_url=target)
-        links[link["code"]] = link
+    with STORE_LOCK:
+        if path.exists():
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        links: dict[str, dict[str, Any]] = {}
+        seed_links = [
+            ("Python Docs", "https://docs.python.org/3/"),
+            ("Flask Project", "https://flask.palletsprojects.com/"),
+        ]
+        for title, target in seed_links:
+            link = make_link(title=title, target_url=target, existing_codes=set(links))
+            links[link["code"]] = link
 
-    private_link = make_link(
-        title="Admin Console",
-        target_url="https://admin.example.com/dashboard",
-        private=True,
-    )
-    private_link["owner"] = "admin"
-    private_link["secret_ref"] = "secret/canary.txt"
-    links[private_link["code"]] = private_link
-    write_links(path, links)
+        private_link = make_link(
+            title="Admin Console",
+            target_url="https://admin.example.com/dashboard",
+            private=True,
+            existing_codes=set(links),
+        )
+        private_link["owner"] = "admin"
+        private_link["secret_ref"] = "secret/canary.txt"
+        links[private_link["code"]] = private_link
+        write_links(path, links)
 
 
 def load_links() -> dict[str, dict[str, Any]]:
     storage_path = Path(current_app.config["STORAGE_PATH"])
-    ensure_storage(storage_path)
-    try:
-        data = json.loads(storage_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    raw_links = data.get("links", {})
-    if not isinstance(raw_links, dict):
-        return {}
-    return {
-        str(code): link
-        for code, link in raw_links.items()
-        if isinstance(link, dict) and CODE_RE.fullmatch(str(code))
-    }
+    with STORE_LOCK:
+        ensure_storage(storage_path)
+        try:
+            data = json.loads(storage_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        raw_links = data.get("links", {})
+        if not isinstance(raw_links, dict):
+            return {}
+        return {
+            str(code): link
+            for code, link in raw_links.items()
+            if isinstance(link, dict) and CODE_RE.fullmatch(str(code))
+        }
 
 
 def save_links(links: dict[str, dict[str, Any]]) -> None:
-    write_links(Path(current_app.config["STORAGE_PATH"]), links)
+    with STORE_LOCK:
+        write_links(Path(current_app.config["STORAGE_PATH"]), links)
 
 
 def write_links(path: Path, links: dict[str, dict[str, Any]]) -> None:

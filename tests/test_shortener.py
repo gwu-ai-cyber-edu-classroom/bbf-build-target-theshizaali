@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 import re
 from pathlib import Path
@@ -20,7 +21,7 @@ def storage_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def client(storage_path: Path, monkeypatch: pytest.MonkeyPatch):
+def app(storage_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SHORTY_ADMIN_PASSWORD", "test-admin-pass")
     monkeypatch.setenv(
         "SHORTY_ALLOWED_HOSTS",
@@ -28,6 +29,11 @@ def client(storage_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
     app = create_app(storage_path)
     app.config.update(TESTING=True)
+    return app
+
+
+@pytest.fixture
+def client(app):
     return app.test_client()
 
 
@@ -58,6 +64,53 @@ def test_public_link_redirects_to_allowed_https_target(client):
     redirect_response = client.get(short_path)
     assert redirect_response.status_code == 302
     assert redirect_response.headers["Location"] == "https://docs.python.org/3/tutorial/"
+
+
+def test_concurrent_api_creates_persist_all_links(app, storage_path: Path):
+    link_count = 30
+
+    def create(index: int) -> int:
+        with app.test_client() as worker:
+            response = worker.post(
+                "/api/links",
+                json={
+                    "title": f"Race {index}",
+                    "target_url": "https://docs.python.org/3/",
+                    "alias": f"race{index}",
+                },
+            )
+            return response.status_code
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        statuses = list(pool.map(create, range(link_count)))
+
+    assert statuses == [201] * link_count
+    links = read_links(storage_path)
+    assert {f"race{index}" for index in range(link_count)} <= set(links)
+
+
+def test_concurrent_follows_preserve_hit_count(app, storage_path: Path):
+    follow_count = 40
+    with app.test_client() as client:
+        response = client.post(
+            "/api/links",
+            json={
+                "title": "Hit counter",
+                "target_url": "https://docs.python.org/3/",
+                "alias": "hitcount",
+            },
+        )
+    assert response.status_code == 201
+
+    def follow(_index: int) -> int:
+        with app.test_client() as worker:
+            return worker.get("/u/hitcount").status_code
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        statuses = list(pool.map(follow, range(follow_count)))
+
+    assert statuses == [302] * follow_count
+    assert read_links(storage_path)["hitcount"]["hits"] == follow_count
 
 
 @pytest.mark.parametrize(
